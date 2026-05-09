@@ -8,9 +8,10 @@ namespace Bibim.Core
     /// Resolves a model id to its provider name and constructs the matching ILlmProvider.
     ///
     /// Supported models in v1.1.0:
-    ///   anthropic → claude-sonnet-4-6, claude-opus-4-7
-    ///   openai    → gpt-5.5
-    ///   gemini    → gemini-3.1-pro-preview
+    ///   anthropic  → claude-sonnet-4-6, claude-opus-4-7
+    ///   openai     → gpt-5.5
+    ///   gemini     → gemini-3.1-pro-preview
+    ///   openrouter -> provider/model ids, e.g. qwen/qwen3-coder-30b-a3b-instruct
     /// </summary>
     public static class LlmProviderFactory
     {
@@ -22,6 +23,7 @@ namespace Bibim.Core
             if (string.IsNullOrEmpty(modelId)) return null;
             string m = modelId.Trim().ToLowerInvariant();
 
+            if (m.Contains("/")) return "openrouter";
             if (m.StartsWith("claude-"))                  return "anthropic";
             if (m.StartsWith("gpt-") || m.StartsWith("o3") || m.StartsWith("o4")) return "openai";
             if (m.StartsWith("gemini-"))                  return "gemini";
@@ -43,6 +45,7 @@ namespace Bibim.Core
                 case "anthropic": return new AnthropicProvider(apiKey, modelId, httpClient);
                 case "openai":    return new OpenAIProvider(apiKey, modelId, httpClient);
                 case "gemini":    return new GeminiProvider(apiKey, modelId, httpClient);
+                case "openrouter": return new OpenRouterProvider(apiKey, modelId, httpClient);
                 default:
                     throw new ArgumentException($"Unsupported provider: {provider}");
             }

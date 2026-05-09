@@ -1,0 +1,165 @@
+[
+  {
+    "id": "rfa_model_curve_crosshair",
+    "title": "RFA Visible Model Curve Crosshair",
+    "category": "rfa-visual-write",
+    "risk": "mutating",
+    "requiresRuntimeValidation": true,
+    "captureScreenshot": true,
+    "userMessage": "In rst_advanced_sample_family.rfa, create a clearly visible model-curve crosshair and rectangle around the origin so it is visible in the exported model view.",
+    "ragQueries": [
+      "FamilyCreate NewModelCurve SketchPlane",
+      "SketchPlane Create Plane CreateByNormalAndOrigin"
+    ],
+    "clarificationAnswer": "Use benchmark defaults: the current document is already the opened rst_advanced_sample_family.rfa family document. Do not open, search for, or load a separate RFA file. Use current doc only. Use doc.FamilyCreate.NewModelCurve, not doc.Create.NewModelCurve. Create large visible model curves near the origin and proceed to code generation.",
+    "prompt": "Write C# for BIBIM/Revit. The current document is a family document such as rst_advanced_sample_family.rfa. Create a visually obvious model-curve crosshair and rectangular frame around XYZ(0,0,0) using SketchPlane.Create and doc.FamilyCreate.NewModelCurve. Use lines at least 20 feet long so the result is visible in the exported model view. Use one Transaction. Return a concise success message with created ElementIds. Return only a ```csharp``` block.",
+    "expectedCompileChecks": [
+      "Uses doc.FamilyCreate.NewModelCurve",
+      "Uses SketchPlane.Create",
+      "Uses one Transaction",
+      "Creates large visible model curves"
+    ]
+  },
+  {
+    "id": "rfa_model_extent_frame",
+    "title": "RFA Model Extent Frame",
+    "category": "rfa-visual-write",
+    "risk": "mutating",
+    "requiresRuntimeValidation": true,
+    "captureScreenshot": true,
+    "userMessage": "Compute the bounding box of visible family elements in rst_advanced_sample_family.rfa and create a visible model-curve frame around that extent.",
+    "ragQueries": [
+      "Element get_BoundingBox BoundingBoxXYZ",
+      "FamilyCreate NewModelCurve SketchPlane"
+    ],
+    "clarificationAnswer": "Use benchmark defaults: the current document is already the opened rst_advanced_sample_family.rfa family document. Do not open, search for, or load a separate RFA file. Collect elements from the current doc, compute bounding boxes with safe null checks, and use doc.FamilyCreate.NewModelCurve for the visible frame.",
+    "prompt": "Write C# for BIBIM/Revit. In the current family document, collect non-type elements with bounding boxes, compute an approximate combined bounding box, and create a visible model-curve frame slightly larger than that box on a horizontal SketchPlane. If no bounding boxes are found, use a 20 foot square centered at origin. Use doc.FamilyCreate.NewModelCurve. Use one Transaction. Return the computed min/max and created ids. Return only a ```csharp``` block.",
+    "expectedCompileChecks": [
+      "Collects elements and uses get_BoundingBox safely",
+      "Has a fallback frame if no bounding boxes exist",
+      "Uses one Transaction",
+      "Creates visible model curves"
+    ]
+  },
+  {
+    "id": "rfa_extrusion_marker",
+    "title": "RFA Visible Extrusion Marker",
+    "category": "rfa-visual-write",
+    "risk": "mutating",
+    "requiresRuntimeValidation": true,
+    "captureScreenshot": true,
+    "userMessage": "In rst_advanced_sample_family.rfa, create a small but clearly visible rectangular extrusion marker near the origin.",
+    "ragQueries": [
+      "FamilyCreate NewExtrusion CurveArrArray SketchPlane",
+      "CurveArrArray CurveArray NewExtrusion"
+    ],
+    "clarificationAnswer": "Use benchmark defaults: the current document is already the opened rst_advanced_sample_family.rfa family document. Do not open, search for, or load a separate RFA file. Use current doc only. Use doc.FamilyCreate.NewExtrusion with a closed rectangular CurveArrArray on a SketchPlane and proceed.",
+    "prompt": "Write C# for BIBIM/Revit. The current document is a family document. Create a small clearly visible rectangular solid extrusion marker near XYZ(0,0,0), roughly 4 feet by 4 feet by 2 feet, using family creation APIs such as doc.FamilyCreate.NewExtrusion with a closed rectangular CurveArrArray on a SketchPlane. Use one Transaction. Return a concise success message with the new element id. Return only a ```csharp``` block.",
+    "expectedCompileChecks": [
+      "Uses a family-safe extrusion API",
+      "Creates closed rectangular profile curves",
+      "Uses one Transaction"
+    ]
+  },
+  {
+    "id": "rfa_selection_marker",
+    "title": "RFA Selection Marker",
+    "category": "rfa-selection-visual",
+    "risk": "mutating",
+    "requiresRuntimeValidation": true,
+    "captureScreenshot": true,
+    "userMessage": "For the selected family elements in rst_advanced_sample_family.rfa, report their ids and create a visible triangle model-curve marker near the origin.",
+    "ragQueries": [
+      "UIDocument Selection GetElementIds",
+      "FamilyCreate NewModelCurve SketchPlane"
+    ],
+    "clarificationAnswer": "Use benchmark defaults: the current document is already the opened rst_advanced_sample_family.rfa family document. Do not open, search for, or load a separate RFA file. Use uidoc.Selection.GetElementIds for selection reporting. Even if selection is empty, create a visible triangle marker near the origin with doc.FamilyCreate.NewModelCurve.",
+    "prompt": "Write C# for BIBIM/Revit. Read uidoc.Selection.GetElementIds(). Report the selected ElementIds and categories. Also create a visible model-curve triangle marker near XYZ(0,0,0) using a family-safe SketchPlane and doc.FamilyCreate.NewModelCurve so the screenshot confirms the code ran. If selection is empty, still create the marker and say selection was empty. Use one Transaction for the marker. Return only a ```csharp``` block.",
+    "expectedCompileChecks": [
+      "Uses uidoc.Selection.GetElementIds",
+      "Handles empty selection",
+      "Creates visible family-safe model curves"
+    ]
+  },
+  {
+    "id": "rfa_parameter_summary",
+    "title": "RFA Parameter Summary",
+    "category": "rfa-read",
+    "risk": "read-only",
+    "requiresRuntimeValidation": true,
+    "captureScreenshot": false,
+    "userMessage": "In rst_advanced_sample_family.rfa, list up to 12 family parameters with name, storage type, whether they are instance parameters, and formula when present.",
+    "ragQueries": [
+      "Document FamilyManager FamilyParameter",
+      "FamilyParameter StorageType IsInstance Formula"
+    ],
+    "clarificationAnswer": "Use benchmark defaults: the current document is already the opened rst_advanced_sample_family.rfa family document. Do not open, search for, or load a separate RFA file. Use current doc only. Use doc.FamilyManager and FamilyParameter APIs. Do not start a transaction.",
+    "prompt": "Write C# for BIBIM/Revit. In a family document, read up to 12 FamilyManager parameters if available. Report parameter name, storage type if accessible, whether it is instance/type, and formula when present. Do not modify the model. Return a concise multiline string and log the parameter count. Return only a ```csharp``` block.",
+    "expectedCompileChecks": [
+      "Uses doc.FamilyManager safely",
+      "Does not use a transaction",
+      "Returns a readable parameter report"
+    ]
+  },
+  {
+    "id": "rfa_family_type_report",
+    "title": "RFA Family Type Report",
+    "category": "rfa-read",
+    "risk": "read-only",
+    "requiresRuntimeValidation": true,
+    "captureScreenshot": false,
+    "userMessage": "In rst_advanced_sample_family.rfa, report the family name, current family type, number of family types, and document category.",
+    "ragQueries": [
+      "Document IsFamilyDocument OwnerFamily FamilyManager CurrentType",
+      "FamilyManager Types CurrentType"
+    ],
+    "clarificationAnswer": "Use benchmark defaults: the current document is already the opened rst_advanced_sample_family.rfa family document. Do not open, search for, or load a separate RFA file. Use current doc only. Use doc.IsFamilyDocument, doc.OwnerFamily, doc.FamilyManager, CurrentType, and family types. Do not start a transaction.",
+    "prompt": "Write C# for BIBIM/Revit. In a family document, report the family name if available, current FamilyManager.CurrentType name, total number of family types, and OwnerFamily.FamilyCategory name. Do not modify the model. Return a concise string and log the same information. Return only a ```csharp``` block.",
+    "expectedCompileChecks": [
+      "Uses doc.IsFamilyDocument safely",
+      "Uses doc.FamilyManager",
+      "Does not use a transaction"
+    ]
+  },
+  {
+    "id": "rfa_visible_element_count",
+    "title": "RFA Visible Element Count",
+    "category": "rfa-read",
+    "risk": "read-only",
+    "requiresRuntimeValidation": true,
+    "captureScreenshot": false,
+    "userMessage": "In rst_advanced_sample_family.rfa, count non-type elements by category and report the top categories.",
+    "ragQueries": [
+      "FilteredElementCollector WhereElementIsNotElementType",
+      "Element Category Name"
+    ],
+    "clarificationAnswer": "Use benchmark defaults: the current document is already the opened rst_advanced_sample_family.rfa family document. Do not open, search for, or load a separate RFA file. Use current doc only. Count non-type elements by Category.Name with null checks. Do not start a transaction.",
+    "prompt": "Write C# for BIBIM/Revit. Collect non-type elements in the current family document, group them by Category.Name, and return the top 10 categories with counts. Skip null categories safely. Do not modify the model. Return only a ```csharp``` block.",
+    "expectedCompileChecks": [
+      "Uses FilteredElementCollector",
+      "Uses WhereElementIsNotElementType",
+      "Groups by category safely",
+      "Does not use a transaction"
+    ]
+  },
+  {
+    "id": "rag_familycreate_extrusion_check",
+    "title": "RAG Check FamilyCreate Extrusion API",
+    "category": "rag-api",
+    "risk": "read-only",
+    "requiresRuntimeValidation": false,
+    "captureScreenshot": false,
+    "userMessage": "Check which Revit family creation API should be used for creating a family extrusion in Revit 2026. Search the Revit API docs first, then return a diagnostic string. Do not modify the model.",
+    "ragQueries": [
+      "FamilyCreate NewExtrusion CurveArrArray SketchPlane",
+      "Document FamilyCreate NewExtrusion"
+    ],
+    "clarificationAnswer": "Use benchmark defaults: the current document is already the opened rst_advanced_sample_family.rfa family document. Do not open, search for, or load a separate RFA file. Use the forced RAG context as ground truth and return a read-only diagnostic. Do not start a transaction and do not create geometry.",
+    "prompt": "Write C# for BIBIM/Revit. You must first call search_revit_api with query FamilyCreate NewExtrusion before writing final code. Then write a read-only diagnostic that reports whether the relevant family extrusion API types/methods are available in this Revit API version. Do not create geometry and do not write files. Return only a ```csharp``` block.",
+    "expectedCompileChecks": [
+      "Uses API names verified through search_revit_api when unsure",
+      "Does not modify the model",
+      "Compiles against installed Revit API"
+    ]
+  }
+]

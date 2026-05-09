@@ -28,6 +28,7 @@ namespace Bibim.Core
             public string ClaudeApiKey { get; set; }      // legacy alias — same value as AnthropicApiKey
             public string OpenAiApiKey { get; set; }
             public string GeminiApiKey { get; set; }
+            public string OpenRouterApiKey { get; set; }
             public bool ValidationGateEnabled { get; set; }
             public bool AutoFixEnabled { get; set; }
             public int AutoFixMaxAttempts { get; set; }
@@ -220,9 +221,17 @@ namespace Bibim.Core
         public static string GetEffectiveRevitVersion()
         {
             // Runtime detection takes priority
-            string runtime = BibimApp.DetectedRevitVersion;
-            if (!string.IsNullOrEmpty(runtime))
-                return runtime;
+            try
+            {
+                string runtime = BibimApp.DetectedRevitVersion;
+                if (!string.IsNullOrEmpty(runtime))
+                    return runtime;
+            }
+            catch
+            {
+                // Non-Revit hosts such as benchmark runners may not be able to
+                // load RevitAPIUI dependencies. Fall back to config/default.
+            }
 
             // Fallback to config
             var config = GetRagConfig();
@@ -254,7 +263,7 @@ namespace Bibim.Core
         {
             string store = null, version = null, dynamoVersion = null;
             string claudeModel = null, geminiModel = null;
-            string anthropicApiKey = null, openAiApiKey = null, geminiApiKey = null;
+            string anthropicApiKey = null, openAiApiKey = null, geminiApiKey = null, openRouterApiKey = null;
             string fallbackStore = null;
             Dictionary<string, string> stores = null;
             bool validationGateEnabled = true, autoFixEnabled = true, verifyStageEnabled = false, enableApiXmlHints = true;
@@ -313,6 +322,7 @@ namespace Bibim.Core
                                    ?? apiKeys["claude_api_key"]?.ToString();
                     openAiApiKey   = apiKeys["openai_api_key"]?.ToString();
                     geminiApiKey   = apiKeys["gemini_api_key"]?.ToString();
+                    openRouterApiKey = apiKeys["openrouter_api_key"]?.ToString();
                 }
 
                 // Environment variable overrides — takes precedence over config file values.
@@ -326,6 +336,9 @@ namespace Bibim.Core
 
                 string envGemini = Environment.GetEnvironmentVariable("GEMINI_API_KEY");
                 if (!string.IsNullOrEmpty(envGemini)) geminiApiKey = envGemini;
+
+                string envOpenRouter = Environment.GetEnvironmentVariable("OPENROUTER_API_KEY");
+                if (!string.IsNullOrEmpty(envOpenRouter)) openRouterApiKey = envOpenRouter;
 
                 fallbackStore = obj["fallback_store"]?.ToString();
 
@@ -368,6 +381,7 @@ namespace Bibim.Core
                 ClaudeApiKey = anthropicApiKey,        // legacy alias — same value
                 OpenAiApiKey = openAiApiKey,
                 GeminiApiKey = geminiApiKey,
+                OpenRouterApiKey = openRouterApiKey,
                 Stores = stores,
                 FallbackStore = fallbackStore ?? store,
                 ValidationGateEnabled = validationGateEnabled,
@@ -418,6 +432,7 @@ namespace Bibim.Core
                 case "anthropic": return cfg.AnthropicApiKey;
                 case "openai":    return cfg.OpenAiApiKey;
                 case "gemini":    return cfg.GeminiApiKey;
+                case "openrouter": return cfg.OpenRouterApiKey;
                 default:          return null;
             }
         }
@@ -430,11 +445,12 @@ namespace Bibim.Core
         {
             string key = GetApiKeyForProvider(providerName);
             return !string.IsNullOrWhiteSpace(key) && key != "CLAUDE_API_KEY_HERE"
-                && key != "OPENAI_API_KEY_HERE" && key != "GEMINI_API_KEY_HERE";
+                && key != "OPENAI_API_KEY_HERE" && key != "GEMINI_API_KEY_HERE"
+                && key != "OPENROUTER_API_KEY_HERE";
         }
 
         /// <summary>
-        /// Save an API key for a specific provider. Writes to api_keys.{anthropic|openai|gemini}_api_key.
+        /// Save an API key for a specific provider. Writes to api_keys.{anthropic|openai|gemini|openrouter}_api_key.
         /// For backwards compat, anthropic also mirrors to claude_api_key.
         /// </summary>
         public static void SaveApiKeyForProvider(string providerName, string apiKey)
@@ -472,6 +488,9 @@ namespace Bibim.Core
                     break;
                 case "gemini":
                     apiKeys["gemini_api_key"] = trimmedKey;
+                    break;
+                case "openrouter":
+                    apiKeys["openrouter_api_key"] = trimmedKey;
                     break;
                 default:
                     throw new ArgumentException($"Unknown provider: {providerName}");

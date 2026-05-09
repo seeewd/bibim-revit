@@ -375,6 +375,12 @@ credit_migration.md
 
 # Local config with real API keys — NEVER commit
 Bibim.Core/Config/rag_config.json
+key.txt
+**/key.txt
+
+# Local OpenRouter/Revit benchmark scratch output
+openroutertest/
+testoutput/
 
 # Legacy Supabase setup files
 supabase-setup/

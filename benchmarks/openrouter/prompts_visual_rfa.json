@@ -1,0 +1,89 @@
+[
+  {
+    "id": "rfa_model_curve_crosshair",
+    "title": "RFA Visible Model Curve Crosshair",
+    "category": "rfa-visual-write",
+    "risk": "mutating",
+    "requiresRuntimeValidation": true,
+    "userMessage": "In the current Revit family document, create a clearly visible model-curve crosshair and rectangle around the origin so it is visible in 3D/model views. Use one transaction and return the created element ids.",
+    "prompt": "Write C# for BIBIM/Revit. The current document is a family document such as rst_advanced_sample_family.rfa. Create a visually obvious model-curve crosshair and rectangular frame around XYZ(0,0,0) using SketchPlane and doc.FamilyCreate.NewModelCurve where possible. Use lines at least 20 feet long so the result is visible in the exported model view. Use one Transaction. Return a concise success message with created ElementIds. Return only a ```csharp``` block.",
+    "expectedCompileChecks": [
+      "Uses doc.FamilyCreate.NewModelCurve or a family-safe equivalent",
+      "Uses SketchPlane.Create",
+      "Uses one Transaction",
+      "Creates large visible model curves"
+    ]
+  },
+  {
+    "id": "rfa_reference_plane_box",
+    "title": "RFA Visible Reference Plane Box",
+    "category": "rfa-visual-write",
+    "risk": "mutating",
+    "requiresRuntimeValidation": true,
+    "userMessage": "In the current Revit family document, add named reference planes that form a visible bounding box/cross around the family. Return the names and ids.",
+    "prompt": "Write C# for BIBIM/Revit. The current document is a family document. Create four named ReferencePlane elements around the family/origin: BIBIM_LEFT, BIBIM_RIGHT, BIBIM_FRONT, BIBIM_BACK, offset about 10 feet from origin, using doc.FamilyCreate.NewReferencePlane. Make them large enough to be visible in model/family views. Use one Transaction. Return a concise success message listing names and ElementIds. Return only a ```csharp``` block.",
+    "expectedCompileChecks": [
+      "Uses doc.FamilyCreate.NewReferencePlane",
+      "Names the reference planes",
+      "Uses one Transaction"
+    ]
+  },
+  {
+    "id": "rfa_detail_line_label",
+    "title": "RFA Visible Detail Line Label",
+    "category": "rfa-visual-write",
+    "risk": "mutating",
+    "requiresRuntimeValidation": true,
+    "userMessage": "Create a visible detail-line marker and text note label BIBIM VISUAL TEST in a printable non-3D family view.",
+    "prompt": "Write C# for BIBIM/Revit. Find a printable non-template non-3D view in the family document, preferring floor plan or elevation views. In that view, create a large X marker using DetailCurve lines and create a TextNote reading BIBIM VISUAL TEST near the marker. Use a valid TextNoteType from FilteredElementCollector(doc).OfClass(typeof(TextNoteType)). Use one Transaction. Return a concise success message with the target view and created ids. Return only a ```csharp``` block.",
+    "expectedCompileChecks": [
+      "Finds a printable non-3D view",
+      "Uses DetailCurve or NewDetailCurve",
+      "Uses a valid TextNoteType",
+      "Uses one Transaction"
+    ]
+  },
+  {
+    "id": "rfa_parameter_visual_report",
+    "title": "RFA Parameter Report Annotation",
+    "category": "rfa-visual-read-write",
+    "risk": "mutating",
+    "requiresRuntimeValidation": true,
+    "userMessage": "Read family parameters and place a short visible text report in a printable family view.",
+    "prompt": "Write C# for BIBIM/Revit. In a family document, read up to 8 FamilyManager parameters if available. Then create a TextNote in a printable non-3D family view containing a short report headed BIBIM FAMILY PARAMS. Use a valid TextNoteType. Use one Transaction only for the TextNote creation. Return the text note id and parameter count. Return only a ```csharp``` block.",
+    "expectedCompileChecks": [
+      "Uses doc.FamilyManager safely",
+      "Creates a visible TextNote in a printable non-3D view",
+      "Uses a valid TextNoteType"
+    ]
+  },
+  {
+    "id": "rfa_selected_element_marker",
+    "title": "RFA Selection Marker",
+    "category": "rfa-selection-visual",
+    "risk": "mutating",
+    "requiresRuntimeValidation": true,
+    "userMessage": "For the selected family elements, report their ids and create a visible marker near the origin so the screenshot confirms the code ran.",
+    "prompt": "Write C# for BIBIM/Revit. Read uidoc.Selection.GetElementIds(). Report the selected ElementIds and categories. Also create a visible model-curve triangle marker near XYZ(0,0,0) using a family-safe SketchPlane and doc.FamilyCreate.NewModelCurve so the screenshot confirms the code ran. If selection is empty, still create the marker and say selection was empty. Use one Transaction for the marker. Return only a ```csharp``` block.",
+    "expectedCompileChecks": [
+      "Uses uidoc.Selection.GetElementIds",
+      "Handles empty selection",
+      "Creates visible family-safe model curves"
+    ]
+  },
+  {
+    "id": "rfa_model_extent_frame",
+    "title": "RFA Model Extent Frame",
+    "category": "rfa-visual-write",
+    "risk": "mutating",
+    "requiresRuntimeValidation": true,
+    "userMessage": "Compute the bounding box of visible family elements and create a visible model-curve frame around that extent.",
+    "prompt": "Write C# for BIBIM/Revit. In the current family document, collect non-type elements with bounding boxes, compute an approximate combined bounding box, and create a visible model-curve frame slightly larger than that box on a horizontal SketchPlane. If no bounding boxes are found, use a 20 foot square centered at origin. Use doc.FamilyCreate.NewModelCurve where possible. Use one Transaction. Return the computed min/max and created ids. Return only a ```csharp``` block.",
+    "expectedCompileChecks": [
+      "Collects elements and uses get_BoundingBox safely",
+      "Has a fallback frame if no bounding boxes exist",
+      "Uses one Transaction",
+      "Creates visible model curves"
+    ]
+  }
+]

@@ -142,6 +142,12 @@ CODE RULES:
    When writing a complete class (full compilation unit), ALWAYS include ctx in the Execute signature:
    public static object Execute(Autodesk.Revit.UI.UIApplication uiApp, Bibim.Core.BibimExecutionContext ctx)
 
+FAMILY DOCUMENT RULES:
+- If the current document is a family document (`doc.IsFamilyDocument == true`), do NOT open or search for the family file again. The injected `doc` is already the target family document.
+- In a family document, use `doc.FamilyCreate.NewModelCurve`, `doc.FamilyCreate.NewExtrusion`, and `doc.FamilyManager` for family creation/parameter work.
+- In a family document, do NOT use project-document creation APIs such as `doc.Create.NewModelCurve` for family geometry. Those fail in the Family Editor.
+- For benchmark/sample-family tasks that mention an `.rfa` by name, treat it as the already-open current document unless the user explicitly asks to open a different file path.
+
 SELECTION-PRIORITY RULE (CRITICAL — applies BEFORE any element query):
 If the user message uses any of these reference patterns, the user is pointing at the
 CURRENT Revit selection — NOT asking for a model-wide query:

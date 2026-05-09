@@ -922,115 +922,31 @@ namespace Bibim.Core
 
         private string BuildTaskPlannerPrompt()
         {
-            string outputLanguage = AppLanguage.IsEnglish ? "English" : "Korean";
-            string categoryChecklist = CategoryQuestionTemplates.BuildPlannerChecklist();
-            return $@"You are the BIBIM task planner for a Revit add-in.
-Return JSON only. No markdown. No code fences. No explanations.
-
-Decide whether the latest user message is:
-- a direct chat/information request that should be answered immediately (`mode = ""chat""`)
-- or an actionable request that should become a task (`mode = ""task""`)
-
-Rules:
-1. Greetings, thanks, capability questions, API explanation questions, and troubleshooting explanations are `chat`.
-2. Any request to inspect, count, analyze, list, generate, modify, place, rename, delete, export, or execute something in Revit is `task`.
-3. For actionable requests, never guess missing details. If anything important is missing, fill `questions` with concrete clarifying questions and set `shouldAutoRun = false`.
-4. If there is an active task:
-   - use `taskRelation = ""update""` ONLY when the user is clearly refining or answering questions about that SAME task
-   - use `taskRelation = ""new""` when the message is a different task or a new request, even if the topic is related
-   - use `taskRelation = ""ask""` when it is ambiguous. In that case, put a short user-facing clarification in `assistantMessage`.
-   - IMPORTANT: If the user's message describes a completely different action (e.g. active task is ""add parameter"" but user says ""move family""), ALWAYS use `taskRelation = ""new""`.
-5. `taskKind = ""read""` means read-only / query / analysis task (e.g. count, list, inspect). If the request is complete, set `shouldAutoRun = true`.
-6. `taskKind = ""write""` means any change to the model or generated artifact. If the request is complete, set `shouldAutoRun = false`.
-   IMPORTANT: Export operations (PDF, DWG, DXF, CSV, IFC, Excel, image, schedule, etc.) are ALWAYS `taskKind = ""write""` and `shouldAutoRun = false`, even though they do not modify the Revit model. They create file artifacts on disk and must go through the preview → confirm → execute flow.
-7. Write all user-facing strings (`title`, `summary`, `questions`, `assistantMessage`) in {outputLanguage}.
-8. Keep `steps` high-level, natural-language, and free of API syntax.
-9. If the user asks about a recent execution failure (e.g. ""왜 실패했어?"", ""에러 원인"", ""why did it fail""), check the [RECENT EXECUTION LOG] section and answer as `mode = ""chat""` with the failure details in `assistantMessage`.
-10. Delegation expressions like ""알아서해"", ""마음대로"", ""아무거나"", ""상관없어"", ""니가 결정해"", ""default로"" mean the user wants you to choose sensible defaults. Treat any pending clarification as answered and proceed.
-
-JSON schema:
-{{
-  ""mode"": ""chat"" | ""task"",
-  ""taskKind"": ""read"" | ""write"",
-  ""taskRelation"": ""new"" | ""update"" | ""ask"",
-  ""title"": ""short task title"",
-  ""summary"": ""one paragraph summary"",
-  ""steps"": [""step 1"", ""step 2""],
-  ""questions"": [
-    {{
-      ""text"": ""question text"",
-      ""selectionType"": ""single"" | ""multi"",
-      ""options"": [""option 1"", ""option 2"", ""option 3""]
-    }}
-  ],
-  ""assistantMessage"": ""direct answer for chat mode OR short clarification for taskRelation=ask"",
-  ""shouldAutoRun"": true | false
-}}
-
-Question rules:
-- Each question MUST have 2-5 concrete options the user can click.
-- Use ""single"" when only one answer makes sense, ""multi"" when multiple can apply.
-- Options should be short, clear labels (not full sentences).
-- The user can also type a custom answer, so options don't need to cover every case.
-
-{categoryChecklist}";
+            return TaskFlowPromptBuilder.BuildPlannerPrompt(AppLanguage.IsEnglish);
         }
 
         private string BuildPlannerInput(string userText, string resolvedText, TaskState activeTask)
         {
-            string[] recentHistory;
+            List<ChatMessage> recentHistory;
             lock (_chatHistoryLock)
             {
                 recentHistory = _chatHistory
                     .Skip(Math.Max(0, _chatHistory.Count - PlannerContextWindow))
-                    .Select(m =>
+                    .Select(m => new ChatMessage
                     {
-                        string text = m.Text ?? string.Empty;
-                        // Cap each turn so a single noisy turn (long code block, big
-                        // tool output) doesn't blow the planner prompt.
-                        if (text.Length > BibimConstants.PlannerHistoryTurnMaxChars)
-                            text = text.Substring(0, BibimConstants.PlannerHistoryTurnMaxChars) + "...";
-                        return $"{(m.IsUser ? "USER" : "ASSISTANT")}: {text}";
+                        IsUser = m.IsUser,
+                        Text = m.Text
                     })
-                    .ToArray();
+                    .ToList();
             }
 
-            string currentTask = activeTask == null || IsTaskTerminal(activeTask)
-                ? "None"
-                : JsonHelper.Serialize(new
-                {
-                    activeTask.TaskId,
-                    activeTask.Title,
-                    activeTask.Summary,
-                    activeTask.Kind,
-                    activeTask.Stage,
-                    activeTask.Steps,
-                    activeTask.Questions,
-                    // Omit CollectedInputs to prevent stale keywords from
-                    // biasing the planner toward "update" on unrelated tasks.
-                    activeTask.RequiresApply
-                }, indented: true);
-
-            string contextBlock = resolvedText != userText
-                ? resolvedText
-                : "(none)";
-
-            return $@"[LATEST USER MESSAGE]
-{userText}
-
-[RESOLVED REVIT CONTEXT]
-{contextBlock}
-
-[ACTIVE TASK]
-{currentTask}
-
-[RECENT EXECUTION LOG]
-{BuildExecutionLogContext()}
-
-[RECENT CONVERSATION]
-{string.Join(Environment.NewLine, recentHistory)}
-
-[Output format: respond with JSON only — no markdown, no commentary.]";
+            return TaskFlowPromptBuilder.BuildPlannerInput(
+                userText,
+                resolvedText,
+                activeTask,
+                activeTask == null || IsTaskTerminal(activeTask),
+                recentHistory,
+                BuildExecutionLogContext());
         }
 
         /// <summary>
@@ -1133,72 +1049,7 @@ Question rules:
         /// </summary>
         private TaskPlanResponse TryParsePlan(string rawText, out string errorMessage)
         {
-            errorMessage = null;
-            string json = ExtractJsonObject(rawText);
-            if (string.IsNullOrWhiteSpace(json))
-            {
-                errorMessage = "Task planner returned non-JSON content.";
-                return null;
-            }
-
-            TaskPlanResponse plan;
-            try
-            {
-                plan = JsonHelper.Deserialize<TaskPlanResponse>(json);
-            }
-            catch (Exception ex)
-            {
-                errorMessage = ex.Message;
-                return null;
-            }
-
-            if (plan == null || string.IsNullOrWhiteSpace(plan.Mode))
-            {
-                errorMessage = "Task planner returned an invalid payload.";
-                return null;
-            }
-
-            // Backward compatibility: questions may come back as plain strings or
-            // as QuestionItem objects with partial fields. Normalize manually so
-            // downstream UI always gets a clean list.
-            try
-            {
-                var jObj = Newtonsoft.Json.Linq.JObject.Parse(json);
-                var questionsToken = jObj["questions"];
-                if (questionsToken is Newtonsoft.Json.Linq.JArray questionsArray && questionsArray.Count > 0)
-                {
-                    var normalized = new List<QuestionItem>();
-                    foreach (var item in questionsArray)
-                    {
-                        if (item.Type == Newtonsoft.Json.Linq.JTokenType.String)
-                        {
-                            normalized.Add(new QuestionItem
-                            {
-                                Text = item.ToString(),
-                                SelectionType = "single",
-                                Options = new List<string>()
-                            });
-                        }
-                        else if (item.Type == Newtonsoft.Json.Linq.JTokenType.Object)
-                        {
-                            var qi = item.ToObject<QuestionItem>();
-                            if (qi != null && !string.IsNullOrWhiteSpace(qi.Text))
-                            {
-                                if (qi.Options == null) qi.Options = new List<string>();
-                                if (string.IsNullOrWhiteSpace(qi.SelectionType)) qi.SelectionType = "single";
-                                normalized.Add(qi);
-                            }
-                        }
-                    }
-                    plan.Questions = normalized;
-                }
-            }
-            catch (Exception parseEx)
-            {
-                Logger.Log("TaskPlanner", $"Questions normalization fallback: {parseEx.Message}");
-            }
-
-            return plan;
+            return TaskFlowPromptBuilder.TryParsePlan(rawText, out errorMessage);
         }
 
         private string ExtractJsonObject(string text)
@@ -1409,39 +1260,10 @@ namespace BibimGenerated
 
         private string BuildTaskExecutionPrompt(TaskState task)
         {
-            string executionLog = BuildExecutionLogContext();
-            string commentLangRule = AppLanguage.IsEnglish
-                ? "\n- Write all C# code comments and user-visible string literals in English."
-                : "\n- 코드 주석과 사용자에게 표시되는 문자열은 모두 한국어로 작성하세요.";
-
-            return $@"Implement the following Revit task.
-
-Task title:
-{task.Title}
-
-Task summary:
-{task.Summary}
-
-Task kind:
-{task.Kind}
-
-Required behavior:
-{string.Join(Environment.NewLine, (task.Steps ?? new List<string>()).Select((step, index) => $"{index + 1}. {step}"))}
-
-User-provided details:
-{string.Join(Environment.NewLine, (task.CollectedInputs ?? new List<string>()).Select(input => $"- {input}"))}
-
-Recent execution history (use this to avoid repeating the same errors):
-{executionLog}
-
-Constraints:
-- Respect the current Revit version and available API surface.
-- Do not guess requirements beyond the task summary.
-- Prefer safe, minimal changes.
-- If a previous execution failed, analyze the error and generate code that avoids the same failure.
-- Return ONLY a ```csharp``` block containing statements for the body of Execute(UIApplication uiApp, Bibim.Core.BibimExecutionContext ctx).
-- Use ctx.Log(""message"") to record intermediate progress (e.g. element counts, decisions, skipped items). These appear in the BIBIM panel after execution.
-- Do NOT include using directives, namespace, class, method signature, markdown outside the code block, or explanation text.{commentLangRule}";
+            return TaskFlowPromptBuilder.BuildTaskExecutionPrompt(
+                task,
+                BuildExecutionLogContext(),
+                AppLanguage.IsEnglish);
         }
 
         private ApiInspectionReport InspectGeneratedCode(string sourceCode, ExecutionResult dryRunResult = null)
@@ -3066,11 +2888,39 @@ Constraints:
         /// <summary>
         /// Build system prompt for plain chat (non-code-gen).
         /// </summary>
-        private Task<string> BuildSystemPromptWithRagAsync(
+        private async Task<string> BuildSystemPromptWithRagAsync(
             string queryContext, bool isCodeGeneration, CancellationToken ct)
         {
             string revitVersion = ConfigService.GetEffectiveRevitVersion();
-            return Task.FromResult(CodeGenSystemPrompt.Build(revitVersion, isCodeGeneration));
+            string ragContext = await BuildVerifiedApiContextAsync(queryContext, revitVersion, ct);
+            return CodeGenSystemPrompt.Build(revitVersion, isCodeGeneration)
+                + CodeGenSystemPrompt.AppendRagContext(ragContext);
+        }
+
+        private async Task<string> BuildVerifiedApiContextAsync(
+            string queryContext,
+            string revitVersion,
+            CancellationToken ct)
+        {
+            if (string.IsNullOrWhiteSpace(queryContext))
+                return "";
+
+            try
+            {
+                var result = await LocalRevitRagService.FetchAsync(queryContext, revitVersion, ct);
+                if (!result.HasContext)
+                    return "";
+
+                Logger.Log("SystemPromptRAG",
+                    $"Injected local Revit API docs status={result.Status} elapsedMs={result.ElapsedMs} queryChars={queryContext.Length}");
+
+                return $"[RAG: {result.ElapsedMs}ms, {result.Status}]\n{result.ContextText}";
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError("SystemPromptRAG", ex);
+                return "";
+            }
         }
 
         /// <summary>
@@ -3258,7 +3108,15 @@ Constraints:
                     CodeGenSystemPrompt.LooksLikeFileOutputTask(task?.SourceUserMessage) ||
                     CodeGenSystemPrompt.LooksLikeFileOutputTask(taskPrompt);
 
+                string ragQueryContext = string.Join("\n",
+                    task?.Title ?? "",
+                    task?.Summary ?? "",
+                    task?.SourceUserMessage ?? "",
+                    taskPrompt ?? "");
+                string ragContext = await BuildVerifiedApiContextAsync(ragQueryContext, revitVersion, ct);
+
                 string systemPrompt = CodeGenSystemPrompt.Build(revitVersion, true, isFileOutput)
+                    + CodeGenSystemPrompt.AppendRagContext(ragContext)
                     + CodeGenSystemPrompt.AppendToolUseInstructions();
                 debugDirectory = CodegenDebugRecorder.CreateRunDirectory(task.TaskId, Guid.NewGuid().ToString("N").Substring(0, 8), "task_codegen");
                 CodegenDebugRecorder.WriteJson(debugDirectory, "task_snapshot.json", CreateTaskDebugSnapshot(task));
@@ -3286,6 +3144,7 @@ Constraints:
                     BibimToolService.GetToolDefinitions(toolHint),
                     CreateToolService().ExecuteAsync,
                     maxTurns: 15, debugDirectory, ct);
+                CodegenDebugRecorder.WriteJson(debugDirectory, "llm_turn_metrics.json", agentResult.TurnMetrics);
 
                 _lastCodeGenResult = agentResult;
 
@@ -3490,22 +3349,24 @@ Constraints:
                     }
                 }
 
-                string systemPrompt = CodeGenSystemPrompt.Build(revitVersion2, true, specIsFileOutput)
-                    + CodeGenSystemPrompt.AppendToolUseInstructions();
-
                 _analyzerService.SetRevitVersion(revitVersion2);
 
                 // Use windowed history to cap token cost across the multi-turn tool loop
                 var specHistory = new List<ChatMessage>(GetHistoryWindow());
 
-                string specDebugDir = CodegenDebugRecorder.CreateRunDirectory(
-                    "spec", Guid.NewGuid().ToString("N").Substring(0, 8), "spec_codegen");
-                CodegenDebugRecorder.WriteText(specDebugDir, "system_prompt.txt", systemPrompt);
-
                 // Use the most recent user message(s) as the tool-hint so we only
                 // ship Revit-context tools that the spec actually needs.
                 string specToolHint = string.Join(" ",
                     specHistory.Where(m => m.IsUser).Select(m => m.Text ?? "").Reverse().Take(3));
+                string specRagContext = await BuildVerifiedApiContextAsync(specToolHint, revitVersion2, ct);
+
+                string systemPrompt = CodeGenSystemPrompt.Build(revitVersion2, true, specIsFileOutput)
+                    + CodeGenSystemPrompt.AppendRagContext(specRagContext)
+                    + CodeGenSystemPrompt.AppendToolUseInstructions();
+
+                string specDebugDir = CodegenDebugRecorder.CreateRunDirectory(
+                    "spec", Guid.NewGuid().ToString("N").Substring(0, 8), "spec_codegen");
+                CodegenDebugRecorder.WriteText(specDebugDir, "system_prompt.txt", systemPrompt);
 
                 var agentResult = await llm.GenerateWithToolsAsync(
                     specHistory, systemPrompt,

@@ -1,0 +1,117 @@
+[
+  {
+    "id": "selection_report",
+    "title": "Report Selected Elements",
+    "category": "selection-read",
+    "risk": "read-only",
+    "requiresRuntimeValidation": true,
+    "userMessage": "For the currently selected Revit elements, report the count, ElementId, category name, element name, and type name. If nothing is selected, tell me to select elements first.",
+    "prompt": "Write C# for BIBIM/Revit. For the currently selected elements, return a short report with count, ElementId, category name, element name, and type name. If nothing is selected, return a clear message asking the user to select elements first. Use ctx.Log for the count. Return only a ```csharp``` block.",
+    "expectedCompileChecks": [
+      "Uses uidoc.Selection.GetElementIds()",
+      "Handles empty selection",
+      "Does not start a transaction for read-only work",
+      "Does not redeclare app/doc/uidoc/ctx"
+    ]
+  },
+  {
+    "id": "selected_mark_parameter",
+    "title": "Set Mark On Selection",
+    "category": "selection-write",
+    "risk": "mutating",
+    "requiresRuntimeValidation": true,
+    "userMessage": "Set the Mark parameter of every currently selected element to BIBIM_TEST. Skip elements where Mark is missing or read-only, and tell me how many changed or skipped.",
+    "prompt": "Write C# for BIBIM/Revit. Set the Mark parameter of every currently selected element to BIBIM_TEST. Skip elements where the parameter is missing or read-only. Use one Transaction. Log how many elements were changed and skipped. If nothing is selected, return a clear message. Return only a ```csharp``` block.",
+    "expectedCompileChecks": [
+      "Uses uidoc.Selection.GetElementIds()",
+      "Uses Transaction for parameter writes",
+      "Checks Parameter null and IsReadOnly",
+      "Does not redeclare app/doc/uidoc/ctx"
+    ]
+  },
+  {
+    "id": "active_view_textnote",
+    "title": "Create TextNote In Active View",
+    "category": "annotation-write",
+    "risk": "mutating",
+    "requiresRuntimeValidation": true,
+    "userMessage": "Create a text note in the active view at XYZ(0, 0, 0) with the text BIBIM TEST NOTE, using the default text note type if possible.",
+    "prompt": "Write C# for BIBIM/Revit. Create a TextNote in the active view at XYZ(0, 0, 0) with text BIBIM TEST NOTE. Use the default text note type if possible. Use one Transaction. Return a clear success message including the new element id. Return only a ```csharp``` block.",
+    "expectedCompileChecks": [
+      "Uses TextNote.Create with a valid TextNoteType id",
+      "Uses doc.ActiveView",
+      "Uses Transaction",
+      "Handles missing text note type"
+    ]
+  },
+  {
+    "id": "wall_door_window_counts",
+    "title": "Count Common Categories",
+    "category": "collector-read",
+    "risk": "read-only",
+    "requiresRuntimeValidation": true,
+    "userMessage": "Count model instances of walls, doors, and windows in the current Revit document and summarize the counts.",
+    "prompt": "Write C# for BIBIM/Revit. Count model instances of Walls, Doors, and Windows in the current document. Use FilteredElementCollector and make sure instance collectors use WhereElementIsNotElementType. Return a concise summary string and log each count. Return only a ```csharp``` block.",
+    "expectedCompileChecks": [
+      "Uses BuiltInCategory.OST_Walls, OST_Doors, OST_Windows",
+      "Uses WhereElementIsNotElementType for instance collectors",
+      "Does not use a transaction"
+    ]
+  },
+  {
+    "id": "level_summary",
+    "title": "Summarize Levels",
+    "category": "collector-read",
+    "risk": "read-only",
+    "requiresRuntimeValidation": true,
+    "userMessage": "List all project levels sorted by elevation. Include the level name, ElementId, and elevation in feet.",
+    "prompt": "Write C# for BIBIM/Revit. List all project levels sorted by elevation. Include level name, ElementId, and elevation in feet. Return a multiline string and log the number of levels. Return only a ```csharp``` block.",
+    "expectedCompileChecks": [
+      "Collects Level elements",
+      "Sorts by Elevation",
+      "Does not use a transaction"
+    ]
+  },
+  {
+    "id": "parameter_lookup_safe",
+    "title": "Lookup Comments Parameter",
+    "category": "parameter-read",
+    "risk": "read-only",
+    "requiresRuntimeValidation": true,
+    "userMessage": "For selected elements, read the Comments parameter when available and report each ElementId with the current value. Handle missing parameters and empty selection.",
+    "prompt": "Write C# for BIBIM/Revit. For selected elements, read the built-in ALL_MODEL_INSTANCE_COMMENTS parameter when available and report ElementId plus the current value. Handle missing parameters and empty selection. Return only a ```csharp``` block.",
+    "expectedCompileChecks": [
+      "Uses BuiltInParameter.ALL_MODEL_INSTANCE_COMMENTS",
+      "Handles missing parameters",
+      "Does not use a transaction"
+    ]
+  },
+  {
+    "id": "rag_pdf_export_options",
+    "title": "RAG Check PDF Export API",
+    "category": "rag-api",
+    "risk": "read-only",
+    "requiresRuntimeValidation": false,
+    "userMessage": "Run a read-only diagnostic in Revit that checks whether PDFExportOptions is available in this Revit API version. Before writing the diagnostic code, use the Revit API documentation search tool for PDFExportOptions. Do not export any files.",
+    "prompt": "Write C# for BIBIM/Revit. You must first call search_revit_api with query PDFExportOptions before writing final code. Inspect whether PDF export appears available for this Revit API version by referencing the correct PDF export API types if they exist. Do not actually export files. Return a short diagnostic string. Return only a ```csharp``` block.",
+    "expectedCompileChecks": [
+      "Uses API names verified through search_revit_api when the model is unsure",
+      "Does not write files",
+      "Compiles against installed Revit API"
+    ]
+  },
+  {
+    "id": "view_sheet_count",
+    "title": "Count Sheets And Views",
+    "category": "collector-read",
+    "risk": "read-only",
+    "requiresRuntimeValidation": true,
+    "userMessage": "Count ViewSheet elements and non-template View elements in the current document, then return a concise summary.",
+    "prompt": "Write C# for BIBIM/Revit. Count ViewSheet elements and non-template View elements. Return a concise summary. Use FilteredElementCollector. Return only a ```csharp``` block.",
+    "expectedCompileChecks": [
+      "Collects ViewSheet",
+      "Filters View.IsTemplate == false",
+      "Does not use a transaction"
+    ]
+  }
+]

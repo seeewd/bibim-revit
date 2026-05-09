@@ -1,0 +1,131 @@
+[
+  {
+    "id": "qwen/qwen3-coder-30b-a3b-instruct",
+    "label": "Qwen3 Coder 30B A3B Instruct",
+    "group": "coding",
+    "approxVramClass": "40gb-near",
+    "supportsTools": true,
+    "enabled": true,
+    "notes": "Primary coding baseline for OpenRouter smoke tests."
+  },
+  {
+    "id": "qwen/qwen-2.5-coder-32b-instruct",
+    "label": "Qwen2.5 Coder 32B Instruct",
+    "group": "coding",
+    "approxVramClass": "40gb-near",
+    "supportsTools": true,
+    "enabled": true,
+    "notes": "Older but strong Coder-family baseline."
+  },
+  {
+    "id": "qwen/qwen3-coder",
+    "label": "Qwen3 Coder 480B A35B",
+    "group": "coding",
+    "approxVramClass": "hosted-large-moe",
+    "supportsTools": true,
+    "enabled": true,
+    "notes": "Large hosted coder model; not a local 40GB class model."
+  },
+  {
+    "id": "qwen/qwen3-coder-flash",
+    "label": "Qwen3 Coder Flash",
+    "group": "coding",
+    "approxVramClass": "hosted-fast",
+    "supportsTools": true,
+    "enabled": true,
+    "notes": "Fast coder candidate for time-to-code comparison."
+  },
+  {
+    "id": "kwaipilot/kat-coder-pro-v2",
+    "label": "KAT-Coder-Pro V2",
+    "group": "coding",
+    "approxVramClass": "hosted-coder",
+    "supportsTools": true,
+    "enabled": true,
+    "notes": "Coding-focused third-party candidate."
+  },
+  {
+    "id": "google/gemma-4-26b-a4b-it",
+    "label": "Gemma 4 26B A4B IT",
+    "group": "gemma4",
+    "approxVramClass": "40gb-near",
+    "supportsTools": true,
+    "enabled": true,
+    "notes": "Gemma 4 MoE candidate available on OpenRouter."
+  },
+  {
+    "id": "google/gemma-4-31b-it",
+    "label": "Gemma 4 31B IT",
+    "group": "gemma4",
+    "approxVramClass": "40gb-near",
+    "supportsTools": true,
+    "enabled": true,
+    "notes": "Gemma 4 dense-ish candidate available on OpenRouter."
+  },
+  {
+    "id": "qwen/qwen3.6-35b-a3b",
+    "label": "Qwen3.6 35B A3B",
+    "group": "40gb-class",
+    "approxVramClass": "40gb-near",
+    "supportsTools": true,
+    "enabled": true,
+    "notes": "Open-weight 35B/A3B model; useful for 40GB-class comparison."
+  },
+  {
+    "id": "qwen/qwen3.6-27b",
+    "label": "Qwen3.6 27B",
+    "group": "40gb-class",
+    "approxVramClass": "40gb-near",
+    "supportsTools": true,
+    "enabled": true,
+    "notes": "Dense 27B model; useful latency/quality comparison."
+  },
+  {
+    "id": "nvidia/nemotron-3-nano-30b-a3b",
+    "label": "Nemotron 3 Nano 30B A3B",
+    "group": "40gb-class",
+    "approxVramClass": "40gb-near",
+    "supportsTools": true,
+    "enabled": true,
+    "notes": "Nemotron-family candidate available on OpenRouter."
+  },
+  {
+    "id": "nvidia/llama-3.3-nemotron-super-49b-v1.5",
+    "label": "Llama 3.3 Nemotron Super 49B V1.5",
+    "group": "40gb-class-plus",
+    "approxVramClass": "40gb-plus",
+    "supportsTools": true,
+    "enabled": true,
+    "notes": "Larger Nemotron option; may exceed strict 40GB local class."
+  },
+  {
+    "id": "anilkay/csharp-clean-code-qwen-lora-merged",
+    "label": "HF C# Clean Code Qwen LoRA",
+    "group": "hf-csharp",
+    "approxVramClass": "unknown",
+    "supportsTools": false,
+    "enabled": false,
+    "notOnOpenRouter": true,
+    "notes": "Requested HuggingFace model; not returned by OpenRouter model list on 2026-05-09."
+  },
+  {
+    "id": "DCAgent/a1-nemotron_csharp",
+    "label": "HF A1 Nemotron C#",
+    "group": "hf-csharp",
+    "approxVramClass": "unknown",
+    "supportsTools": false,
+    "enabled": false,
+    "notOnOpenRouter": true,
+    "notes": "Requested HuggingFace model; not returned by OpenRouter model list on 2026-05-09."
+  },
+  {
+    "id": "google/gemma-4-E2B-it-assistant",
+    "label": "HF Gemma 4 E2B IT Assistant",
+    "group": "hf-gemma4",
+    "approxVramClass": "unknown",
+    "supportsTools": false,
+    "enabled": false,
+    "notOnOpenRouter": true,
+    "notes": "Requested HuggingFace model; not returned by OpenRouter model list on 2026-05-09."
+  }
+]

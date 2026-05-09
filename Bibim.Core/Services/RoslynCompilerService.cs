@@ -329,6 +329,34 @@ namespace BibimGenerated
                 if (asm != null && !string.IsNullOrEmpty(asm.Location))
                 {
                     refs.Add(MetadataReference.CreateFromFile(asm.Location));
+                    return;
+                }
+
+                string dllName = assemblyName.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)
+                    ? assemblyName
+                    : assemblyName + ".dll";
+
+                string envPath = Environment.GetEnvironmentVariable("REVIT_SDK_PATH");
+                if (!string.IsNullOrWhiteSpace(envPath))
+                {
+                    string candidate = Path.Combine(envPath, dllName);
+                    if (File.Exists(candidate))
+                    {
+                        refs.Add(MetadataReference.CreateFromFile(candidate));
+                        return;
+                    }
+                }
+
+                string programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+                string[] years = { "2026", "2025", "2024", "2027", "2023", "2022" };
+                foreach (string year in years)
+                {
+                    string candidate = Path.Combine(programFiles, "Autodesk", $"Revit {year}", dllName);
+                    if (File.Exists(candidate))
+                    {
+                        refs.Add(MetadataReference.CreateFromFile(candidate));
+                        return;
+                    }
                 }
             }
             catch (Exception ex)

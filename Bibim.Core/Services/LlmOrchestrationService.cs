@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Net.Http;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
@@ -129,6 +130,7 @@ namespace Bibim.Core
             finally
             {
                 // Always clear progress UI — otherwise an error path leaves the UI stuck "loading".
+                response.ElapsedMs = sw.ElapsedMilliseconds;
                 OnStatusUpdate?.Invoke(null);
             }
 
@@ -158,10 +160,10 @@ namespace Bibim.Core
                 var raw = await _provider.SendNonStreamingAsync(messages, systemPrompt, null, ct, maxTokens, jsonMode);
 
                 string text = ExtractTextFromContent(raw["content"] as JArray);
-                int inTok = raw["usage"]?["input_tokens"]?.Value<int>() ?? 0;
-                int outTok = raw["usage"]?["output_tokens"]?.Value<int>() ?? 0;
-                int cachedTok = raw["usage"]?["cache_read_input_tokens"]?.Value<int>() ?? 0;
-                int cacheCreateTok = raw["usage"]?["cache_creation_input_tokens"]?.Value<int>() ?? 0;
+                int inTok = ReadInt(raw["usage"]?["input_tokens"]);
+                int outTok = ReadInt(raw["usage"]?["output_tokens"]);
+                int cachedTok = ReadInt(raw["usage"]?["cache_read_input_tokens"]);
+                int cacheCreateTok = ReadInt(raw["usage"]?["cache_creation_input_tokens"]);
 
                 response.Text = text;
                 response.InputTokens = inTok;
@@ -194,6 +196,10 @@ namespace Bibim.Core
                 response.IsContextLengthExceeded = IsContextLengthError(ex.Message);
                 Logger.LogError("LlmOrchestration.NonStreaming", ex);
             }
+            finally
+            {
+                response.ElapsedMs = sw.ElapsedMilliseconds;
+            }
 
             return response;
         }
@@ -225,12 +231,17 @@ namespace Bibim.Core
                 for (int turn = 0; turn < maxTurns; turn++)
                 {
                     ct.ThrowIfCancellationRequested();
+                    var turnMetric = new LlmTurnMetric
+                    {
+                        TurnIndex = turn + 1
+                    };
 
                     OnStatusUpdate?.Invoke(turn == 0 ? "Generating code..." : "Thinking...");
                     Logger.Log("LlmOrchestration",
                         $"rid={requestId} provider={_provider.ProviderName} model={_provider.ModelId} tool-turn={turn}");
 
                     JObject response;
+                    var turnSw = Stopwatch.StartNew();
                     try
                     {
                         // 8192 ceiling. max_tokens is a HARD LIMIT — providers bill by
@@ -246,17 +257,28 @@ namespace Bibim.Core
                     }
                     catch (Exception ex)
                     {
+                        turnSw.Stop();
+                        turnMetric.LlmElapsedMs = turnSw.ElapsedMilliseconds;
+                        turnMetric.ErrorMessage = ex.Message;
+                        result.TurnMetrics.Add(turnMetric);
                         result.Success = false;
                         result.ErrorMessage = $"API request failed: {ex.Message}";
                         result.IsContextLengthExceeded = IsContextLengthError(ex.Message);
                         Logger.LogError("LlmOrchestration.GenerateWithToolsAsync", ex);
                         return result;
                     }
+                    turnSw.Stop();
+                    turnMetric.LlmElapsedMs = turnSw.ElapsedMilliseconds;
 
-                    int inTok = response["usage"]?["input_tokens"]?.Value<int>() ?? 0;
-                    int outTok = response["usage"]?["output_tokens"]?.Value<int>() ?? 0;
-                    int cachedTok = response["usage"]?["cache_read_input_tokens"]?.Value<int>() ?? 0;
-                    int cacheCreateTok = response["usage"]?["cache_creation_input_tokens"]?.Value<int>() ?? 0;
+                    int inTok = ReadInt(response["usage"]?["input_tokens"]);
+                    int outTok = ReadInt(response["usage"]?["output_tokens"]);
+                    int cachedTok = ReadInt(response["usage"]?["cache_read_input_tokens"]);
+                    int cacheCreateTok = ReadInt(response["usage"]?["cache_creation_input_tokens"]);
+                    turnMetric.InputTokens = inTok;
+                    turnMetric.OutputTokens = outTok;
+                    turnMetric.CachedInputTokens = cachedTok;
+                    turnMetric.CacheCreationInputTokens = cacheCreateTok;
+                    result.LlmTurnCount = turn + 1;
                     result.TotalInputTokens += inTok;
                     result.TotalOutputTokens += outTok;
                     result.TotalCachedInputTokens += cachedTok;
@@ -276,6 +298,7 @@ namespace Bibim.Core
                         $"tool_turn_{turn:00}_response.json", response);
 
                     string stopReason = response["stop_reason"]?.ToString();
+                    turnMetric.StopReason = stopReason;
                     var content = response["content"] as JArray ?? new JArray();
 
                     // ── BIBIM-007 — Defensive tool_use coercion ──
@@ -306,6 +329,7 @@ namespace Bibim.Core
                             $"rid={requestId} turn={turn} provider reported stop_reason={stopReason} " +
                             "but content has tool_use blocks; coercing to tool_use to preserve pairing");
                         stopReason = "tool_use";
+                        turnMetric.StopReason = stopReason;
                     }
 
                     // ── end_turn / max_tokens: model finished or was truncated ──
@@ -322,6 +346,43 @@ namespace Bibim.Core
 
                         if (string.IsNullOrWhiteSpace(code))
                         {
+                            var syntheticToolContent = ExtractTextToolUses(finalText);
+                            if (syntheticToolContent.Count > 0 && turn < maxTurns - 1)
+                            {
+                                turnMetric.StopReason = "text_tool_use";
+                                messages.Add(new JObject
+                                {
+                                    ["role"] = "assistant",
+                                    ["content"] = syntheticToolContent
+                                });
+
+                                var syntheticToolResults = await ExecuteToolUseBlocksAsync(
+                                    syntheticToolContent,
+                                    result,
+                                    turnMetric,
+                                    toolExecutor,
+                                    turn,
+                                    debugDirectory,
+                                    ct);
+
+                                if (syntheticToolResults.Count == 0)
+                                {
+                                    result.Success = false;
+                                    result.ErrorMessage = "Provider returned a text-form tool call but no valid tool blocks were found.";
+                                    result.TurnMetrics.Add(turnMetric);
+                                    OnStatusUpdate?.Invoke(null);
+                                    return result;
+                                }
+
+                                messages.Add(new JObject
+                                {
+                                    ["role"] = "user",
+                                    ["content"] = syntheticToolResults
+                                });
+
+                                result.TurnMetrics.Add(turnMetric);
+                                continue;
+                            }
                             // max_tokens truncation mid-generation — request continuation
                             if (stopReason == "max_tokens" && turn < maxTurns - 1)
                             {
@@ -332,12 +393,14 @@ namespace Bibim.Core
                                     ["content"] = "[CONTINUATION_REQUIRED] Your response was cut off. " +
                                         "Continue EXACTLY where you left off. Do NOT repeat code already generated."
                                 });
+                                result.TurnMetrics.Add(turnMetric);
                                 continue;
                             }
 
                             // Non-code response (e.g. clarification)
                             result.Success = true;
                             result.IsCodeResponse = false;
+                            result.TurnMetrics.Add(turnMetric);
                             OnStatusUpdate?.Invoke(null);
                             return result;
                         }
@@ -355,6 +418,7 @@ namespace Bibim.Core
                             result.Success = true;
                             Logger.Log("LlmOrchestration",
                                 $"rid={requestId} tool-loop done turns={turn + 1} compile=OK");
+                            result.TurnMetrics.Add(turnMetric);
                             OnStatusUpdate?.Invoke(null);
                             return result;
                         }
@@ -377,6 +441,7 @@ namespace Bibim.Core
                                 ["role"] = "user",
                                 ["content"] = BuildCompileErrorFeedback(compileResult, isFirstFailure, prunedAttempts)
                             });
+                            result.TurnMetrics.Add(turnMetric);
                             continue;
                         }
 
@@ -384,6 +449,7 @@ namespace Bibim.Core
                         result.ErrorMessage = $"Final compilation failed:\n{compileResult.ErrorSummary}";
                         Logger.Log("LlmOrchestration",
                             $"rid={requestId} tool-loop exhausted turns={turn + 1} compile=FAIL");
+                        result.TurnMetrics.Add(turnMetric);
                         OnStatusUpdate?.Invoke(null);
                         return result;
                     }
@@ -415,8 +481,18 @@ namespace Bibim.Core
 
                             OnStatusUpdate?.Invoke($"Using {toolName}...");
                             Logger.Log("LlmOrchestration", $"rid={requestId} tool={toolName}");
+                            result.ToolCallCount++;
+                            if (string.Equals(toolName, "search_revit_api", StringComparison.OrdinalIgnoreCase))
+                                result.RagCallCount++;
+                            if (string.Equals(toolName, "run_roslyn_check", StringComparison.OrdinalIgnoreCase))
+                                result.RoslynToolCallCount++;
 
-                            string toolOutput;
+                            string toolOutput = null;
+                            var toolMetric = new ToolCallMetric
+                            {
+                                Name = toolName
+                            };
+                            var toolSw = Stopwatch.StartNew();
                             try
                             {
                                 toolOutput = await toolExecutor(toolName, toolInput, ct);
@@ -424,7 +500,16 @@ namespace Bibim.Core
                             catch (Exception ex)
                             {
                                 toolOutput = $"[Tool Error] {ex.Message}";
+                                toolMetric.ErrorMessage = ex.Message;
                                 Logger.LogError($"LlmOrchestration.tool.{toolName}", ex);
+                            }
+                            finally
+                            {
+                                toolSw.Stop();
+                                toolMetric.ElapsedMs = toolSw.ElapsedMilliseconds;
+                                toolMetric.OutputChars = toolOutput?.Length ?? 0;
+                                turnMetric.ToolCalls.Add(toolMetric);
+                                turnMetric.ToolsElapsedMs += toolMetric.ElapsedMs;
                             }
 
                             CodegenDebugRecorder.WriteText(debugDirectory,
@@ -445,6 +530,7 @@ namespace Bibim.Core
                                 $"rid={requestId} turn={turn} stop_reason=tool_use but no valid tool blocks found");
                             result.Success = false;
                             result.ErrorMessage = "Provider returned tool_use stop reason but no valid tool blocks were found.";
+                            result.TurnMetrics.Add(turnMetric);
                             OnStatusUpdate?.Invoke(null);
                             return result;
                         }
@@ -455,12 +541,14 @@ namespace Bibim.Core
                             ["content"] = toolResults
                         });
 
+                        result.TurnMetrics.Add(turnMetric);
                         continue;
                     }
 
                     // Unexpected stop reason
                     result.Success = false;
                     result.ErrorMessage = $"Unexpected stop_reason: {stopReason}";
+                    result.TurnMetrics.Add(turnMetric);
                     OnStatusUpdate?.Invoke(null);
                     return result;
                 }
@@ -492,6 +580,81 @@ namespace Bibim.Core
 
         // ───────────────────────────── helpers ─────────────────────────────
 
+        private async Task<JArray> ExecuteToolUseBlocksAsync(
+            JArray content,
+            CodeGenerationResult result,
+            LlmTurnMetric turnMetric,
+            Func<string, string, CancellationToken, Task<string>> toolExecutor,
+            int turn,
+            string debugDirectory,
+            CancellationToken ct)
+        {
+            var toolResults = new JArray();
+            if (content == null) return toolResults;
+
+            foreach (JObject block in content)
+            {
+                if (block["type"]?.ToString() != "tool_use") continue;
+
+                string toolId = block["id"]?.ToString();
+                string toolName = block["name"]?.ToString();
+                string toolInput = block["input"]?.ToString(Newtonsoft.Json.Formatting.None) ?? "{}";
+
+                if (string.IsNullOrEmpty(toolId) || string.IsNullOrEmpty(toolName))
+                {
+                    Logger.Log("LlmOrchestration",
+                        $"rid={result.RequestId} malformed tool_use block: id={toolId ?? "null"}, name={toolName ?? "null"} - skipping");
+                    continue;
+                }
+
+                OnStatusUpdate?.Invoke($"Using {toolName}...");
+                Logger.Log("LlmOrchestration", $"rid={result.RequestId} tool={toolName}");
+                result.ToolCallCount++;
+                if (string.Equals(toolName, "search_revit_api", StringComparison.OrdinalIgnoreCase))
+                    result.RagCallCount++;
+                if (string.Equals(toolName, "run_roslyn_check", StringComparison.OrdinalIgnoreCase))
+                    result.RoslynToolCallCount++;
+
+                string toolOutput = null;
+                var toolMetric = new ToolCallMetric
+                {
+                    Name = toolName
+                };
+                var toolSw = Stopwatch.StartNew();
+                try
+                {
+                    toolOutput = await toolExecutor(toolName, toolInput, ct);
+                }
+                catch (Exception ex)
+                {
+                    toolOutput = $"[Tool Error] {ex.Message}";
+                    toolMetric.ErrorMessage = ex.Message;
+                    Logger.LogError($"LlmOrchestration.tool.{toolName}", ex);
+                }
+                finally
+                {
+                    toolSw.Stop();
+                    toolMetric.ElapsedMs = toolSw.ElapsedMilliseconds;
+                    toolMetric.OutputChars = toolOutput?.Length ?? 0;
+                    turnMetric.ToolCalls.Add(toolMetric);
+                    turnMetric.ToolsElapsedMs += toolMetric.ElapsedMs;
+                }
+
+                CodegenDebugRecorder.WriteText(debugDirectory,
+                    $"tool_turn_{turn:00}_{toolName}_result.txt", toolOutput);
+
+                toolResults.Add(new JObject
+                {
+                    ["type"] = "tool_result",
+                    ["tool_use_id"] = toolId,
+                    ["name"] = toolName,
+                    ["content"] = toolOutput
+                });
+            }
+
+            return toolResults;
+        }
+
         private static JArray BuildMessagesArray(IEnumerable<ChatMessage> history)
         {
             var arr = new JArray();
@@ -519,6 +682,46 @@ namespace Bibim.Core
             return sb.ToString();
         }
 
+        private static JArray ExtractTextToolUses(string text)
+        {
+            var arr = new JArray();
+            if (string.IsNullOrWhiteSpace(text)) return arr;
+
+            var functionMatches = Regex.Matches(
+                text,
+                @"<function=([A-Za-z0-9_]+)>\s*(.*?)\s*</function>",
+                RegexOptions.Singleline);
+
+            foreach (Match functionMatch in functionMatches)
+            {
+                string name = functionMatch.Groups[1].Value;
+                string body = functionMatch.Groups[2].Value;
+                var input = new JObject();
+
+                var parameterMatches = Regex.Matches(
+                    body,
+                    @"<parameter=([A-Za-z0-9_]+)>\s*(.*?)\s*</parameter>",
+                    RegexOptions.Singleline);
+
+                foreach (Match parameterMatch in parameterMatches)
+                {
+                    string parameterName = parameterMatch.Groups[1].Value;
+                    string parameterValue = parameterMatch.Groups[2].Value.Trim();
+                    input[parameterName] = parameterValue;
+                }
+
+                arr.Add(new JObject
+                {
+                    ["type"] = "tool_use",
+                    ["id"] = "toolu_text_" + Guid.NewGuid().ToString("N").Substring(0, 12),
+                    ["name"] = name,
+                    ["input"] = input
+                });
+            }
+
+            return arr;
+        }
+
         private static string ExtractCSharpCode(string responseText)
         {
             if (string.IsNullOrEmpty(responseText)) return null;
@@ -536,6 +739,21 @@ namespace Bibim.Core
                 return responseText.Substring(start, end - start).Trim();
             }
             return null;
+        }
+
+        private static int ReadInt(JToken token, int fallback = 0)
+        {
+            if (token == null || token.Type == JTokenType.Null)
+                return fallback;
+
+            try
+            {
+                return token.Value<int>();
+            }
+            catch
+            {
+                return fallback;
+            }
         }
 
         private string BuildCompileErrorFeedback(CompilationResult result, bool includeRules = true, int priorAttempts = 0)
@@ -648,6 +866,7 @@ namespace Bibim.Core
         public int OutputTokens { get; set; }
         public int CachedInputTokens { get; set; }
         public int CacheCreationInputTokens { get; set; }
+        public long ElapsedMs { get; set; }
         public bool IsContextLengthExceeded { get; set; }
     }
 
@@ -665,8 +884,35 @@ namespace Bibim.Core
         public int TotalOutputTokens { get; set; }
         public int TotalCachedInputTokens { get; set; }
         public int TotalCacheCreationInputTokens { get; set; }
+        public int LlmTurnCount { get; set; }
+        public int ToolCallCount { get; set; }
+        public int RagCallCount { get; set; }
+        public int RoslynToolCallCount { get; set; }
+        public List<LlmTurnMetric> TurnMetrics { get; set; } = new List<LlmTurnMetric>();
         public string DebugArtifactDirectory { get; set; }
         public bool IsContextLengthExceeded { get; set; }
+    }
+
+    public class LlmTurnMetric
+    {
+        public int TurnIndex { get; set; }
+        public string StopReason { get; set; }
+        public long LlmElapsedMs { get; set; }
+        public long ToolsElapsedMs { get; set; }
+        public int InputTokens { get; set; }
+        public int OutputTokens { get; set; }
+        public int CachedInputTokens { get; set; }
+        public int CacheCreationInputTokens { get; set; }
+        public string ErrorMessage { get; set; }
+        public List<ToolCallMetric> ToolCalls { get; set; } = new List<ToolCallMetric>();
+    }
+
+    public class ToolCallMetric
+    {
+        public string Name { get; set; }
+        public long ElapsedMs { get; set; }
+        public int OutputChars { get; set; }
+        public string ErrorMessage { get; set; }
     }
 
     public class TokenUsageInfo
