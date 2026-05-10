@@ -142,6 +142,22 @@ CODE RULES:
    When writing a complete class (full compilation unit), ALWAYS include ctx in the Execute signature:
    public static object Execute(Autodesk.Revit.UI.UIApplication uiApp, Bibim.Core.BibimExecutionContext ctx)
 
+LEVEL API RULES:
+- When listing or comparing project levels, collect `Level` elements with `.OfClass(typeof(Level))`.
+- Use the strongly typed `Level.Elevation` property for level height. NEVER use `LookupParameter(...)` to read a level's elevation, and never guess localized parameter names such as ""Elevation"", ""Height"", ""Base"", or translated equivalents.
+- Revit internal length units are feet. Convert level elevations with `UnitUtils.ConvertFromInternalUnits(level.Elevation, UnitTypeId.Millimeters)` when the user asks for millimeters.
+- Always null-check cast results before reading `Level.Name` or `Level.Elevation`.
+- NEVER pass a `Level.Id` to `new FilteredElementCollector(doc, someId)`. That overload requires a View.Id. For level-specific summaries, collect model-wide and filter by level-related parameters or properties.
+
+WALL / CATEGORY COLLECTOR RULES:
+- When the code needs `Wall` instances, prefer `.OfClass(typeof(Wall)).WhereElementIsNotElementType()` before casting.
+- `.OfCategory(BuiltInCategory.OST_Walls)` can include non-Wall elements in sample projects. If category filtering is used, cast with `var wall = e as Wall; if (wall == null) continue;` instead of direct casts.
+- For selected curtain walls, get the selected element as `Wall`, then use `wall.CurtainGrid`; never cast a generic `Element` or `object` directly to `CurtainGrid`.
+
+JSON OUTPUT RULES:
+- Do NOT use `System.Text.Json` in generated code. In Revit 2024 / .NET Framework runtime compilation it may not be referenced.
+- If JSON text is explicitly needed, use `Newtonsoft.Json.JsonConvert.SerializeObject(...)`; otherwise return a simple string, anonymous object, dictionary, or list.
+
 FAMILY DOCUMENT RULES:
 - If the current document is a family document (`doc.IsFamilyDocument == true`), do NOT open or search for the family file again. The injected `doc` is already the target family document.
 - In a family document, use `doc.FamilyCreate.NewModelCurve`, `doc.FamilyCreate.NewExtrusion`, and `doc.FamilyManager` for family creation/parameter work.
