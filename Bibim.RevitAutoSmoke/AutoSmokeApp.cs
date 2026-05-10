@@ -31,19 +31,54 @@ namespace Bibim.RevitAutoSmoke
         private string _root;
         private string _resultPath;
         private string _logPath;
+        private string _activeSourceModelPath;
         private SmokeRequest[] _requests = new SmokeRequest[0];
         private SmokeBatchResult _batchResult;
 
         public Result OnStartup(UIControlledApplication application)
         {
             application.Idling += OnIdling;
+            application.DialogBoxShowing += OnDialogBoxShowing;
             return Result.Succeeded;
         }
 
         public Result OnShutdown(UIControlledApplication application)
         {
             application.Idling -= OnIdling;
+            application.DialogBoxShowing -= OnDialogBoxShowing;
             return Result.Succeeded;
+        }
+
+        private void OnDialogBoxShowing(object sender, DialogBoxShowingEventArgs e)
+        {
+            string dialogId = e?.DialogId ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(dialogId)) return;
+
+            try
+            {
+                File.AppendAllText(GetLogPath(), $"[{DateTime.Now:O}] DialogBoxShowing: {dialogId}{Environment.NewLine}");
+            }
+            catch { }
+
+            if (IsUnresolvedReferencesDialog(dialogId))
+            {
+                const int secondCommandLink = 1002;
+                try
+                {
+                    bool accepted = e.OverrideResult(secondCommandLink);
+                    File.AppendAllText(GetLogPath(),
+                        $"[{DateTime.Now:O}] Auto-dismiss unresolved references dialog result={secondCommandLink} accepted={accepted}{Environment.NewLine}");
+                }
+                catch (Exception ex)
+                {
+                    try
+                    {
+                        File.AppendAllText(GetLogPath(),
+                            $"[{DateTime.Now:O}] Auto-dismiss unresolved references dialog failed: {ex.Message}{Environment.NewLine}");
+                    }
+                    catch { }
+                }
+            }
         }
 
         private void OnIdling(object sender, IdlingEventArgs e)
@@ -158,6 +193,28 @@ namespace Bibim.RevitAutoSmoke
             }
         }
 
+        private string GetLogPath()
+        {
+            if (!string.IsNullOrWhiteSpace(_logPath)) return _logPath;
+
+            string root = !string.IsNullOrWhiteSpace(_root)
+                ? _root
+                : Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "BIBIM",
+                    "debug",
+                    "revit-auto-smoke");
+            Directory.CreateDirectory(root);
+            return Path.Combine(root, "auto_smoke.log");
+        }
+
+        private static bool IsUnresolvedReferencesDialog(string dialogId)
+        {
+            return dialogId.IndexOf("Unresolved", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                (dialogId.IndexOf("Reference", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                 dialogId.IndexOf("Link", StringComparison.OrdinalIgnoreCase) >= 0);
+        }
+
         private static SmokeRequest[] LoadRequests(string root, string requestPath)
         {
             string batchPath = Path.Combine(root, "batch_requests.json");
@@ -174,7 +231,7 @@ namespace Bibim.RevitAutoSmoke
             return new[] { request };
         }
 
-        private static SmokeResult RunOne(UIApplication uiApp, SmokeRequest request, string root, string logPath)
+        private SmokeResult RunOne(UIApplication uiApp, SmokeRequest request, string root, string logPath)
         {
             if (string.IsNullOrWhiteSpace(request.GeneratedCodePath) || !File.Exists(request.GeneratedCodePath))
                 throw new FileNotFoundException("Generated code file not found.", request.GeneratedCodePath);
@@ -271,7 +328,7 @@ namespace Bibim.RevitAutoSmoke
             return result;
         }
 
-        private static Document EnsureDocument(UIApplication uiApp, SmokeRequest request, string outputDir, string logPath)
+        private Document EnsureDocument(UIApplication uiApp, SmokeRequest request, string outputDir, string logPath)
         {
             if (!string.IsNullOrWhiteSpace(request.SourceModelPath))
             {
@@ -285,10 +342,25 @@ namespace Bibim.RevitAutoSmoke
                 string copiedModelPath = Path.Combine(outputDir, "auto_smoke_project" + sourceExtension);
                 File.Copy(request.SourceModelPath, copiedModelPath, overwrite: true);
                 File.SetAttributes(copiedModelPath, File.GetAttributes(copiedModelPath) & ~FileAttributes.ReadOnly);
+
+                var activeUidoc = uiApp.ActiveUIDocument;
+                if (!request.ForceNewDocument &&
+                    activeUidoc?.Document != null &&
+                    activeUidoc.Document.IsValidObject &&
+                    IsSamePath(_activeSourceModelPath, request.SourceModelPath))
+                {
+                    ActivateRequestedView(activeUidoc, request.ViewName, logPath);
+                    File.AppendAllText(logPath,
+                        $"Reusing active source model for batch request: {activeUidoc.Document.PathName}{Environment.NewLine}");
+                    File.AppendAllText(logPath, $"Active view: {activeUidoc.ActiveView?.Name}{Environment.NewLine}");
+                    return activeUidoc.Document;
+                }
+
                 var sourceUidoc = uiApp.OpenAndActivateDocument(copiedModelPath);
                 if (sourceUidoc == null)
                     throw new InvalidOperationException("Failed to open copied source model.");
 
+                _activeSourceModelPath = Path.GetFullPath(request.SourceModelPath);
                 ActivateRequestedView(sourceUidoc, request.ViewName, logPath);
                 File.AppendAllText(logPath, $"Activated copied source model: {copiedModelPath}{Environment.NewLine}");
                 File.AppendAllText(logPath, $"Active view: {sourceUidoc.ActiveView?.Name}{Environment.NewLine}");
@@ -325,6 +397,21 @@ namespace Bibim.RevitAutoSmoke
             File.AppendAllText(logPath, $"Activated document: {modelPath}{Environment.NewLine}");
             File.AppendAllText(logPath, $"Active view: {uidoc?.ActiveView?.Name}{Environment.NewLine}");
             return uidoc?.Document;
+        }
+
+        private static bool IsSamePath(string left, string right)
+        {
+            if (string.IsNullOrWhiteSpace(left) || string.IsNullOrWhiteSpace(right)) return false;
+            try
+            {
+                left = Path.GetFullPath(left);
+                right = Path.GetFullPath(right);
+            }
+            catch { }
+
+            return string.Equals(left.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                right.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar),
+                StringComparison.OrdinalIgnoreCase);
         }
 
         private static void ActivateRequestedView(UIDocument uidoc, string viewName, string logPath)
@@ -379,6 +466,7 @@ namespace Bibim.RevitAutoSmoke
                 var ids = new FilteredElementCollector(doc)
                     .OfCategory(bic)
                     .WhereElementIsNotElementType()
+                    .Where(e => MatchesSelectionFilters(doc, e, request))
                     .Select(e => e.Id)
                     .Where(id => id != ElementId.InvalidElementId)
                     .Take(Math.Max(0, request.SelectElementCount - selected.Count))
@@ -396,6 +484,38 @@ namespace Bibim.RevitAutoSmoke
 
             uidoc.Selection.SetElementIds(selected);
             File.AppendAllText(logPath, $"Preselected elements: {string.Join(", ", selected.Select(id => id.Value))}{Environment.NewLine}");
+        }
+
+        private static bool MatchesSelectionFilters(Document doc, Element element, SmokeRequest request)
+        {
+            if (element == null) return false;
+
+            if (!ContainsIgnoreCase(element.Name, request.SelectionNameContains))
+                return false;
+
+            if (!string.IsNullOrWhiteSpace(request.SelectionTypeNameContains))
+            {
+                string typeName = null;
+                try
+                {
+                    var typeId = element.GetTypeId();
+                    if (typeId != ElementId.InvalidElementId)
+                        typeName = doc.GetElement(typeId)?.Name;
+                }
+                catch { }
+
+                if (!ContainsIgnoreCase(typeName, request.SelectionTypeNameContains))
+                    return false;
+            }
+
+            return true;
+        }
+
+        private static bool ContainsIgnoreCase(string value, string requiredSubstring)
+        {
+            if (string.IsNullOrWhiteSpace(requiredSubstring)) return true;
+            return !string.IsNullOrWhiteSpace(value) &&
+                value.IndexOf(requiredSubstring, StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private static object InvokeGeneratedCode(Assembly assembly, UIApplication uiApp, BibimExecutionContext ctx)
@@ -630,8 +750,11 @@ namespace Bibim.RevitAutoSmoke
         public string SourceModelPath { get; set; }
         public string ViewName { get; set; }
         public bool CaptureScreenshot { get; set; }
+        public bool ForceNewDocument { get; set; }
         public int SelectElementCount { get; set; }
         public string[] SelectionCategories { get; set; }
+        public string SelectionNameContains { get; set; }
+        public string SelectionTypeNameContains { get; set; }
         public string OutputDirectory { get; set; }
     }
 

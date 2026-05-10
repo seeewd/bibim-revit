@@ -1,0 +1,56 @@
+[
+  {
+    "id": "anthropic/claude-sonnet-4.6",
+    "label": "Claude Sonnet 4.6",
+    "group": "baseline-api",
+    "approxVramClass": "api-baseline",
+    "supportsTools": true,
+    "enabled": true,
+    "notes": "Guide baseline. OpenRouter currently exposes this as anthropic/claude-sonnet-4.6."
+  },
+  {
+    "id": "qwen/qwen-2.5-coder-32b-instruct",
+    "label": "Qwen2.5 Coder 32B Instruct",
+    "group": "local-4090-class",
+    "approxVramClass": "24gb-near",
+    "supportsTools": true,
+    "enabled": true,
+    "notes": "Guide 4090-class local candidate."
+  },
+  {
+    "id": "mistralai/codestral-2508",
+    "label": "Codestral 2508",
+    "group": "local-4080-class-substitute",
+    "approxVramClass": "22b-class",
+    "supportsTools": true,
+    "enabled": true,
+    "notes": "Nearest currently available substitute for guide model mistralai/codestral-2501."
+  },
+  {
+    "id": "meta-llama/llama-3.3-70b-instruct",
+    "label": "Llama 3.3 70B Instruct",
+    "group": "hosted-large",
+    "approxVramClass": "40gb-plus",
+    "supportsTools": true,
+    "enabled": true,
+    "notes": "Guide API/high-spec candidate."
+  },
+  {
+    "id": "microsoft/phi-4",
+    "label": "Phi-4",
+    "group": "local-4080-class",
+    "approxVramClass": "14b-class",
+    "supportsTools": true,
+    "enabled": true,
+    "notes": "Guide lightweight candidate."
+  },
+  {
+    "id": "google/gemma-4-26b-a4b-it",
+    "label": "Gemma 4 26B A4B IT",
+    "group": "extra-local-candidate",
+    "approxVramClass": "26b-moe-class",
+    "supportsTools": true,
+    "enabled": true,
+    "notes": "Extra model requested in the Revit 2024 pilot."
+  }
+]
